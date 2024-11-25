@@ -1,0 +1,70 @@
+import pandas as pd
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense, Flatten
+from tensorflow.keras.utils import to_categorical
+from sklearn.model_selection import train_test_split
+
+# Set seed for reproducibility
+SEED = 42
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
+
+# 1. Load data
+df = pd.read_csv('df_cleaned.csv')  # Sesuaikan nama file
+X = df['Text']  # Ganti dengan nama kolom teks Anda
+y = df.drop(columns='Text').idxmax(axis=1)
+
+# 2. Encode target labels
+label_mapping = {label: idx for idx, label in enumerate(y.unique())}
+y = y.map(label_mapping)
+
+# 3. Tokenization and padding
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(X)
+X_seq = tokenizer.texts_to_sequences(X)
+
+# Vocabulary size
+vocab_size = len(tokenizer.word_index) + 1
+
+# Padding sequences
+max_length = max(len(seq) for seq in X_seq)
+X_padded = pad_sequences(X_seq, maxlen=max_length, padding='post')
+
+# 4. Train-test split
+X_train, X_test, y_train, y_test = train_test_split(
+    X_padded, y, test_size=0.2, random_state=SEED, stratify=y
+)
+
+# 5. Convert target labels to one-hot encoding
+y_train_encoded = to_categorical(y_train, num_classes=len(label_mapping))
+y_test_encoded = to_categorical(y_test, num_classes=len(label_mapping))
+
+# 6. Build model
+model = Sequential([
+    Embedding(input_dim=vocab_size, output_dim=64, input_length=max_length),
+    Flatten(),
+    Dense(64, activation='relu'),
+    Dense(len(label_mapping), activation='softmax')
+])
+
+# Compile the model
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# 7. Train model
+history = model.fit(
+    X_train, y_train_encoded,
+    epochs=15,
+    batch_size=4,
+    validation_data=(X_test, y_test_encoded)
+)
+
+# 8. Evaluate model
+loss, accuracy = model.evaluate(X_test, y_test_encoded)
+print(f"Test Accuracy: {accuracy:.4f}")
+
+# 9. Save the model
+model.save('text_classification_model.h5')
